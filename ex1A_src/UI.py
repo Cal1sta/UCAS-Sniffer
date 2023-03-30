@@ -34,7 +34,7 @@ class StatusBar(Frame):
         self.label.update_idletasks()
 
 def click_packet_list_treeview(event):#当点击数据包列表中的任意一行时，展开该数据包的详细信息
-    # event.widget获取Treeview对象，调用selection获取选择对象名称,返回结果为字符型元祖
+    # event.widget获取Treeview对象，调用selection获取选择对象名称,返回结果为字符型元组
     selected_item = event.widget.selection()
     # 清空packet_dissect_tree上现有的内容------------------------
     packet_dissect_tree.delete(*packet_dissect_tree.get_children())
@@ -46,7 +46,7 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
     packet = packet_list[packet_id]
     lines = (packet.show(dump=True)).split('\n')  # dump=True返回字符串，不打出，\n换行符
     last_tree_entry = None
-    print(lines)
+    #print(lines)
     for line in lines:
         if line.startswith('#'):
             line = line.strip('# ')  # 删除#
@@ -54,9 +54,7 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
         else:
             packet_dissect_tree.insert(last_tree_entry, 'end', text=line)
         col_width = font.Font().measure(line)
-        # 根据新插入数据项的长度动态调整协议解析区的宽度
-        if packet_dissect_tree.column('Dissect', width=None) < col_width:
-            packet_dissect_tree.column('Dissect', width=col_width)
+        packet_dissect_tree.column('Dissect', width=500)
 
 
 
@@ -65,6 +63,8 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
     hexdump_scrolledtext.delete(1.0, END)
     hexdump_scrolledtext.insert(END, hexdump(packet, dump=True))
     hexdump_scrolledtext['state'] = 'disabled'
+
+    #如果packet为TCP包，那么可以选择追踪TCP流
 
 def packet_capture():#抓取数据包
     global packet_list
@@ -153,7 +153,7 @@ def packet_manage(packet):#处理抓取到的数据包
             #print(flag)
             info = str(packet[TCP].sport) + '  -->  ' + str(packet[TCP].dport)  + ' [' +flag +'] ' + \
                    ' Seq=' + str(packet[TCP].seq) + ' Ack=' + str(packet[TCP].ack) + ' Win=' + str(packet[TCP].window)
-            print(info)
+            #print(info)
             packet_list_treeview.insert("", 'end', id, text=id, values=(id, Time, src, dst, "TCP", length, info))
         elif proto_ip == 'UDP':
             info = str(packet[UDP].sport) + '  -->  ' + str(packet[UDP].dport) + ' LEN=' + str(packet[UDP].len)
@@ -177,10 +177,10 @@ def packet_manage(packet):#处理抓取到的数据包
 def save():
     global flag_save
     flag_save = True
-    filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[('pcapng','.pcapng')],initialfile='.pcapng')
-    if filename.find('.pcapng') == -1:
-        # 默认文件格式为 pcapng
-        filename = filename+'.pcapng'
+    filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='.pcap')
+    if filename.find('.pcap') == -1:
+        # 默认文件格式为 pcap
+        filename = filename+'.pcap'
     wrpcap(filename, packet_list)
 
 def start():#响应开始按钮
@@ -189,10 +189,10 @@ def start():#响应开始按钮
         save_or_not = tkinter.messagebox.askyesnocancel("Unsaved Packets...","您是否要保存已捕获的分组？若不保存，您已捕获的分组将会丢失")
         if save_or_not == True:#如果选择保存分组
             #提供pcapng格式的文件保存方式
-            filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=('pcapng','.pcapng'),initialfile='.pcapng')
-            if filename.find('.pcapng') == -1:
-                # 默认文件格式为 pcapng
-                filename = filename + '.pcapng'
+            filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='.pcap')
+            if filename.find('.pcap') == -1:
+                # 默认文件格式为 pcap
+                filename = filename + '.pcap'
             wrpcap(filename, packet_list)
         else:
             flag_stop = False
@@ -237,10 +237,10 @@ def quit():
             if save_or_not is False:
                 tk.destroy()
             elif save_or_not is True:
-                filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=('pcapng','.pcapng'),initialfile='*.pcapng')
-                if filename.find('.pcapng') == -1:
-                    # 默认文件格式为 pcapng
-                    filename = filename + '.pcapng'
+                filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='*.pcap')
+                if filename.find('.pcap') == -1:
+                    # 默认文件格式为 pcap
+                    filename = filename + '.pcap'
                 wrpcap(filename, packet_list)
                 tk.destroy()
         else:
@@ -269,8 +269,9 @@ start_button = Button(toolbar, width=8, text="开始", command=start)
 stop_button = Button(toolbar, width=8, text="停止", command=stop)
 save_button = Button(toolbar, width=8, text="保存数据", command=save)
 quit_button = Button(toolbar, width=8, text="退出", command=quit)
-nic_text = Label(toolbar,width=8,text="网卡选择：")
+track_button = Button(toolbar, width=10, text='追踪TCP流')
 #下拉菜单：用于选择网卡
+nic_text = Label(toolbar,width=8,text="网卡选择：")
 variable = StringVar()
 variable.set("尚未选择")
 nic_choose = OptionMenu(toolbar, variable, *OPTIONS)
@@ -279,6 +280,7 @@ start_button['state'] = 'normal'
 stop_button['state'] = 'disabled'
 save_button['state'] = 'disabled'
 quit_button['state'] = 'normal'
+track_button['state'] = 'disabled'
 # 按钮及toolbar容器布局
 
 # pack() 可接受参数
@@ -292,7 +294,8 @@ start_button.pack(side=LEFT, padx=5)
 stop_button.pack(side=LEFT, after=start_button, padx=10, pady=10)
 save_button.pack(side=LEFT, after=stop_button, padx=10, pady=10)
 quit_button.pack(side=LEFT, after=save_button, padx=10, pady=10)
-nic_text.pack(side=LEFT,after=quit_button,padx=10,pady=10)
+track_button.pack(side=LEFT, after=quit_button, padx=10, pady=10)
+nic_text.pack(side=LEFT,after=track_button,padx=10,pady=10)
 nic_choose.pack(side=LEFT,after=nic_text, padx=10, pady=10)
 toolbar.pack(side=TOP, fill=X)
 nic_choose.bind('<Expose>', choose_nic)
@@ -340,10 +343,18 @@ main_panedwindow.add(packet_list_frame)
 packet_dissect_frame = Frame()
 packet_dissect_sub_frame = Frame(packet_dissect_frame)
 packet_dissect_tree = Treeview(packet_dissect_sub_frame, selectmode='browse')
+
+# packet_list_column_width = [500]
+# packet_list_treeview['show'] = 'headings'
+# # 设置数据包列表区的列
+# for column_name, column_width in zip(packet_list_treeview["columns"], packet_list_column_width):
+#     packet_list_treeview.column(column_name, width=column_width)
+#     packet_list_treeview.heading(column_name, text=column_name)
+
 packet_dissect_tree["columns"] = ("Dissect",)
-packet_dissect_tree.column('Dissect', anchor='w')
-# packet_dissect_tree.heading('#0', text='数据报解析区', anchor='w')
-packet_dissect_tree.pack(side=LEFT, fill=BOTH, expand=YES)
+#packet_dissect_tree.column('Dissect',width=500)
+packet_dissect_tree.heading('#0', text='数据报解析区')
+packet_dissect_tree.pack(side=TOP, fill=BOTH, expand=YES)
 # 协议解析区垂直滚动条
 packet_dissect_vscrollbar = Scrollbar(packet_dissect_sub_frame, orient="vertical", command=packet_dissect_tree.yview)
 packet_dissect_vscrollbar.pack(side=RIGHT, fill=Y)      # 滚动条布局
