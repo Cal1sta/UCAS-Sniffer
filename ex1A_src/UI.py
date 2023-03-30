@@ -15,12 +15,13 @@ stop_sending = threading.Event()
 
 id = 1#数据包的编号
 packet_list = []#抓取到的数据包
+packet_track_list = []#流追踪的数据包
 NIC = None
 #各种事件的标志，True表示发生过，false表示尚未发生
 flag_start = False
 flag_save = False
 flag_stop = False
-
+flag_track = False
 class StatusBar(Frame):
     def __init__(self, master):
         Frame.__init__(self, master)# 初始化Frame对象。master为Frame的父控件，默认为None
@@ -32,6 +33,20 @@ class StatusBar(Frame):
     def clear(self):
         self.label.config(text="")
         self.label.update_idletasks()
+
+def stream_track():#弹出一个子窗口，用来显示追踪的数据包
+    global flag_track
+    if flag_track == False:#开始追踪
+        track_button.configure(text = '停止流追踪')
+
+
+        flag_track = True
+        
+    else:#取消追踪
+        track_button['text'] = '开始流追踪'
+
+        flag_track = False
+        
 
 def click_packet_list_treeview(event):#当点击数据包列表中的任意一行时，展开该数据包的详细信息
     # event.widget获取Treeview对象，调用selection获取选择对象名称,返回结果为字符型元组
@@ -64,7 +79,15 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
     hexdump_scrolledtext.insert(END, hexdump(packet, dump=True))
     hexdump_scrolledtext['state'] = 'disabled'
 
-    #如果packet为TCP包，那么可以选择追踪TCP流
+    #如果packet为TCP或UDP包，那么可以选择追踪流
+    #print(packet[Ether].type)
+    if packet[Ether].type==0x0800:
+        if packet[IP].proto == 6 or packet[IP].proto == 17:
+            track_button['state'] = NORMAL
+        else:
+            track_button['state'] = DISABLED
+    else:
+        track_button['state'] = DISABLED
 
 def packet_capture():#抓取数据包
     global packet_list
@@ -269,7 +292,7 @@ start_button = Button(toolbar, width=8, text="开始", command=start)
 stop_button = Button(toolbar, width=8, text="停止", command=stop)
 save_button = Button(toolbar, width=8, text="保存数据", command=save)
 quit_button = Button(toolbar, width=8, text="退出", command=quit)
-track_button = Button(toolbar, width=10, text='追踪TCP流')
+track_button = Button(toolbar, width=10, text='开始流追踪', command=stream_track)
 #下拉菜单：用于选择网卡
 nic_text = Label(toolbar,width=8,text="网卡选择：")
 variable = StringVar()
