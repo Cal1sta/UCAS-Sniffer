@@ -39,192 +39,6 @@ class StatusBar(Frame):
         self.label.config(text="")
         self.label.update_idletasks()
 
-def track_packet_manage(packet_id,packet_time,packet):
-    timeArray = time.localtime(packet_time)
-    Time = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
-    length = len(packet)  # 记录数据包长度
-    info = packet.summary()  # 记录数据包info信息
-    src=packet[IP].src#将源地址和目的地址更新为IP地址
-    dst=packet[IP].dst
-    if packet[IP].proto == 6:#TCP
-        flag = ''
-        if 'U' in packet[TCP].flags:
-            flag = flag + 'URG'
-        if 'A' in packet[TCP].flags:
-            if flag != '':
-                flag = flag + ','
-            flag = flag + 'ACK'
-        if 'P' in packet[TCP].flags:
-            if flag != '':
-                flag = flag + ','
-            flag = flag + 'PSH'
-        if 'R' in packet[TCP].flags:
-            if flag != '':
-                flag = flag + ','
-            flag = flag + 'RST'
-        if 'S' in packet[TCP].flags:
-            if flag != '':
-                flag = flag + ','
-            flag = flag + 'SYN'
-        if 'F' in packet[TCP].flags:
-            if flag != '':
-                flag = flag + ','
-            flag = flag + 'FIN'
-        info = str(packet[TCP].sport) + '  -->  ' + str(packet[TCP].dport)  + ' [' +flag +'] ' + \
-                ' Seq=' + str(packet[TCP].seq) + ' Ack=' + str(packet[TCP].ack) + ' Win=' + str(packet[TCP].window)
-        packet_list_treeview.insert("", 'end', id, text=id, values=(packet_id, Time, src, dst, "TCP", length, info))
-    else:#UDP
-        info = str(packet[UDP].sport) + '  -->  ' + str(packet[UDP].dport) + ' LEN=' + str(packet[UDP].len)
-        packet_list_treeview.insert("", 'end', id, text=id, values=(packet_id, Time, src, dst, "UDP", length, info))
-    #将该数据包提取到的数据插入到数据包列表区
-    packet_list_treeview.update_idletasks()
-
-def stream_track():#用来显示追踪的数据包
-    global flag_track
-    if flag_track == False:#开始追踪
-        flag_track = True
-        track_button.configure(text = '停止流追踪')
-        '''
-        1.筛选packet，把符合条件的调用track_packet_manage
-        2.清空UI列表
-        3.根据track_packet,把新数据打到列表栏中
-        4.结束后复原
-        '''
-        '''
-        1.清空UI列表(start方法)
-        '''
-        items = packet_list_treeview.get_children()
-        for item in items:#清空数据包列表
-            packet_list_treeview.delete(item)
-        packet_list_treeview.clipboard_clear()#清除剪切板
-        #packet_dissect_tree.delete(*packet_dissect_tree.get_children())
-        hexdump_scrolledtext['state'] = 'normal'
-        hexdump_scrolledtext.delete(1.0, END)
-        hexdump_scrolledtext['state'] = 'disabled'
-        '''
-        2.筛选packet，把符合条件的调用函数输出
-        '''
-        i = 0#当前遍历的packet编号
-        for packet in packet_list:
-            if packet[Ether].type==0x0800:#ip
-                if packet[IP].proto == 6:#TCP
-                    if packet[IP].src == ip1 and packet[IP].dst == ip2 and packet[TCP].sport == port1 and packet[TCP].dport == port2:
-                        track_packet_manage(i+1,packet_time_list[i],packet)
-                    elif packet[IP].src == ip2 and packet[IP].dst == ip1 and packet[TCP].sport == port2 and packet[TCP].dport == port1:
-                        track_packet_manage(i+1,packet_time_list[i],packet)
-                elif packet[IP].proto == 17:#UDP
-                    if packet[IP].src == ip1 and packet[IP].dst == ip2 and packet[UDP].sport == port1 and packet[UDP].dport == port2:
-                        track_packet_manage(i+1,packet_time_list[i],packet)
-                    elif packet[IP].src == ip2 and packet[IP].dst == ip1 and packet[UDP].sport == port2 and packet[UDP].dport == port1:
-                        track_packet_manage(i+1,packet_time_list[i],packet)
-            i += 1
-        
-
-        
-    else:#取消追踪
-        track_button['text'] = '开始流追踪'
-        flag_track = False
-        #1.清空UI
-        items = packet_list_treeview.get_children()
-        for item in items:#清空数据包列表
-            packet_list_treeview.delete(item)
-        packet_list_treeview.clipboard_clear()#清除剪切板
-        #packet_dissect_tree.delete(*packet_dissect_tree.get_children())
-        hexdump_scrolledtext['state'] = 'normal'
-        hexdump_scrolledtext.delete(1.0, END)
-        hexdump_scrolledtext['state'] = 'disabled'
-        #2.恢复
-        j = 1
-        for packet in packet_list:
-            timeArray = time.localtime(packet_time_list[j-1])
-            Time = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
-            length = len(packet)  # 记录数据包长度
-            info = packet.summary()  # 记录数据包info信息
-            types = {0x0800:'IPv4',0x0806:'ARP',0x86dd:"IPv6",0x880b:"PPP",0x814c:'SNMP'}
-            type = packet[Ether].type#记录以太网的类型
-            src = packet[Ether].src#记录MAC地址
-            dst = packet[Ether].dst
-            if type in types:
-                proto_ether = types[type]
-            else:
-                proto_ether = "Other"  #如果该数据包含有上述字典中没有的协议，则设置为other
-                protocol = proto_ether
-            if proto_ether == 'IPv4':#如果数据包是IPv4类型，就继续判断更细化的协议
-                prots = {1:'ICMP',2:'IGMP',4:'IP',6:'TCP',8:'EGP',9:'IGP',17:'UDP',41:'IPv6',50:'ESP',89:'OSPF'}
-                #字典记录IPv4报文携带的是哪一种协议
-                src=packet[IP].src#将源地址和目的地址更新为IP地址
-                dst=packet[IP].dst
-                if packet[IP].proto in prots:#分析是ipv4下的哪一种协议
-                    proto_ip = prots[packet[IP].proto]
-                else:
-                    proto_ip = 'other'
-                if proto_ip == 'ICMP':#如果是icmp
-                    #print("是icmp报文")
-                    types_icmp = {0: 'echo reply' , 3:'Destination unreachable',5: 'router redirect', 8: 'echo request',
-                                11: 'time-to-live exceeded',13: 'timestamp request',14: 'timestamp reply' }
-                    if packet[ICMP].type in types_icmp:
-                        type_icmp = types_icmp[packet[ICMP].type]#现在知道了是哪一种icmp报文
-                        print(type_icmp)
-                        if type_icmp == 'echo reply':
-                            info = 'echo reply    ' + 'id=' + str(packet[ICMP].id) + ',seq=' + str(packet[ICMP].seq) + ', ttl=' + str(packet[IP].ttl)
-                        elif type_icmp == 'Destination unreachable':
-                            info = "Destination unreachable"
-                        elif type_icmp == 'echo request':
-                            info = 'echo request  ' + 'id=' + str(packet[ICMP].id) + ',seq=' + str(packet[ICMP].seq) + ', ttl=' + str(packet[IP].ttl)
-                        elif type_icmp == 'time-to-live exceeded':
-                            info = "time-to-live exceeded"
-                        else:
-                            info = type_icmp
-                        packet_list_treeview.insert("", 'end', id, text=id,values=(j, Time, src, dst, "ICMP", length, info))
-                    else:
-                        packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, proto_ip, length, info))
-                    #if proto_ip == 'TCP':  # 如果是tcp
-                elif proto_ip == 'TCP':
-                    flag = ''
-                    print(packet[TCP].dport)
-                    if 'U' in packet[TCP].flags:
-                        flag = flag + 'URG'
-                    if 'A' in packet[TCP].flags:
-                        if flag != '':
-                            flag = flag + ','
-                        flag = flag + 'ACK'
-                    if 'P' in packet[TCP].flags:
-                        if flag != '':
-                            flag = flag + ','
-                        flag = flag + 'PSH'
-                    if 'R' in packet[TCP].flags:
-                        if flag != '':
-                            flag = flag + ','
-                        flag = flag + 'RST'
-                    if 'S' in packet[TCP].flags:
-                        if flag != '':
-                            flag = flag + ','
-                        flag = flag + 'SYN'
-                    if 'F' in packet[TCP].flags:
-                        if flag != '':
-                            flag = flag + ','
-                        flag = flag + 'FIN'
-                    info = str(packet[TCP].sport) + '  -->  ' + str(packet[TCP].dport)  + ' [' +flag +'] ' + \
-                        ' Seq=' + str(packet[TCP].seq) + ' Ack=' + str(packet[TCP].ack) + ' Win=' + str(packet[TCP].window)
-                    #print(info)
-                    packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, "TCP", length, info))
-                elif proto_ip == 'UDP':
-                    info = str(packet[UDP].sport) + '  -->  ' + str(packet[UDP].dport) + ' LEN=' + str(packet[UDP].len)
-                    packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, "UDP", length, info))
-                else:
-                    packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, proto_ip, length, info))
-            elif proto_ether == 'ARP':
-                if packet[ARP].op == 1:
-                    dst = "Broadcast"
-                    info = "Who has " + packet[ARP].pdst + "?\tTell " + packet[ARP].psrc
-                elif packet[ARP].op == 2:
-                    info = packet[ARP].psrc + " is at " + packet[Ether].dst
-                packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, "ARP", length, info))
-            else:
-                packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, proto_ether, length, info))
-            #将该数据包提取到的数据插入到数据包列表区
-            packet_list_treeview.update_idletasks()
-            j+=1
 
 def click_packet_list_treeview(event):#当点击数据包列表中的任意一行时，展开该数据包的详细信息
     # event.widget获取Treeview对象，调用selection获取选择对象名称,返回结果为字符型元组
@@ -258,24 +72,6 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
     hexdump_scrolledtext.insert(END, hexdump(packet, dump=True))
     hexdump_scrolledtext['state'] = 'disabled'
 
-    #如果packet为TCP或UDP包，那么可以选择追踪流
-    #print(packet[Ether].type)
-    if packet[Ether].type==0x0800:
-        if packet[IP].proto == 6 or packet[IP].proto == 17:
-            track_button['state'] = NORMAL
-            global ip1,ip2,port1,port2
-            ip1 = packet[IP].dst
-            ip2 = packet[IP].src
-            if packet[IP].proto == 6:
-                port1 = packet[TCP].dport
-                port2 = packet[TCP].sport
-            else:
-                port1 = packet[UDP].dport
-                port2 = packet[UDP].sport
-        else:
-            track_button['state'] = DISABLED
-    else:
-        track_button['state'] = DISABLED
 
 def packet_capture():#抓取数据包
     global packet_list
@@ -445,40 +241,39 @@ def quit():
         if flag_save == False:
             save_or_not = tkinter.messagebox.askyesnocancel("Unsaved Packets...","您是否要保存已捕获的分组？若不保存，您已捕获的分组将会丢失")
             if save_or_not is False:
-                tk.destroy()
+                main_window.destroy()
             elif save_or_not is True:
                 filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='*.pcap')
                 if filename.find('.pcap') == -1:
                     # 默认文件格式为 pcap
                     filename = filename + '.pcap'
                 wrpcap(filename, packet_list)
-                tk.destroy()
+                main_window.destroy()
         else:
-            tk.destroy()
+            main_window.destroy()
     else:
-        tk.destroy()
+        main_window.destroy()
 # ---------------------以下代码负责绘制GUI界面---------------------
 
 def choose_nic(events):
     global NIC
     NIC = variable.get()
     print(NIC)
-tk = tkinter.Tk() # 创建根窗口
+main_window = tkinter.Tk() # 创建根窗口
 # w, h = tk.maxsize()
 # tk.geometry("{}x{}".format(w,h))
-tk.title("sniffer")
+main_window.title("sniffer")
 # 带水平分割条的主窗体
 # PanedWindow是一个窗口布局管理的插件，可以包含一个或者多个子控件
-main_panedwindow = PanedWindow(tk, sashrelief=RAISED, sashwidth=5, orient=VERTICAL)
+main_panedwindow = PanedWindow(main_window, sashrelief=RAISED, sashwidth=5, orient=VERTICAL)
 
 # 顶部的按钮及过滤条件区
-toolbar = Frame(tk) # 新建一个框架控件；在屏幕上显示一个矩形区域，用来作为容器
+toolbar = Frame(main_window) # 新建一个框架控件；在屏幕上显示一个矩形区域，用来作为容器
 # 按钮控件；在程序中显示按钮
 start_button = Button(toolbar, width=8, text="开始", command=start)
 stop_button = Button(toolbar, width=8, text="停止", command=stop)
 save_button = Button(toolbar, width=8, text="保存数据", command=save)
 quit_button = Button(toolbar, width=8, text="退出", command=quit)
-track_button = Button(toolbar, width=10, text='开始流追踪', command=stream_track)
 #下拉菜单：用于选择网卡
 nic_text = Label(toolbar,width=8,text="网卡选择：")
 variable = StringVar()
@@ -489,7 +284,6 @@ start_button['state'] = 'normal'
 stop_button['state'] = 'disabled'
 save_button['state'] = 'disabled'
 quit_button['state'] = 'normal'
-track_button['state'] = 'disabled'
 # 按钮及toolbar容器布局
 
 # pack() 可接受参数
@@ -503,13 +297,12 @@ start_button.pack(side=LEFT, padx=5)
 stop_button.pack(side=LEFT, after=start_button, padx=10, pady=10)
 save_button.pack(side=LEFT, after=stop_button, padx=10, pady=10)
 quit_button.pack(side=LEFT, after=save_button, padx=10, pady=10)
-track_button.pack(side=LEFT, after=quit_button, padx=10, pady=10)
-nic_text.pack(side=LEFT,after=track_button,padx=10,pady=10)
+nic_text.pack(side=LEFT,after=quit_button,padx=10,pady=10)
 nic_choose.pack(side=LEFT,after=nic_text, padx=10, pady=10)
 toolbar.pack(side=TOP, fill=X)
 nic_choose.bind('<Expose>', choose_nic)
 
-toolbar1 = Frame(tk)# 新建一个用来放置“过滤条件”的框架控件
+toolbar1 = Frame(main_window)# 新建一个用来放置“过滤条件”的框架控件
 filter_label = Label(toolbar1, width=10, text="过滤条件：")
 fitler_entry = Entry(toolbar1)# 输入框
 # 布局
@@ -581,7 +374,7 @@ main_panedwindow.add(hexdump_scrolledtext)
 main_panedwindow.pack(fill=BOTH, expand=1)
 
 # 从Frame类派生出状态栏StatusBar类（继承自Label组件本身，使用set和clear方法去扩展它）
-status_bar = StatusBar(tk)
+status_bar = StatusBar(main_window)
 status_bar.pack(side=BOTTOM, fill=X)
 # 调用主循环，显示窗口，同时开始tkinter的事件循环
-tk.mainloop()
+main_window.mainloop()
