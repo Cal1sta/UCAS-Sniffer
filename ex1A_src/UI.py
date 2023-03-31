@@ -12,8 +12,9 @@ from scapy.all import *
 from nic_check import OPTIONS
 
 stop_sending = threading.Event()
-
+track_id = -1
 id = 1#数据包的编号
+packet_time_list = []#抓包的时间
 packet_list = []#抓取到的数据包
 packet_track_list = []#流追踪的数据包
 NIC = None
@@ -22,6 +23,10 @@ flag_start = False
 flag_save = False
 flag_stop = False
 flag_track = False
+ip1 = NONE
+ip2 = NONE
+port1 = NONE
+port2 = NONE
 class StatusBar(Frame):
     def __init__(self, master):
         Frame.__init__(self, master)# 初始化Frame对象。master为Frame的父控件，默认为None
@@ -34,19 +39,192 @@ class StatusBar(Frame):
         self.label.config(text="")
         self.label.update_idletasks()
 
-def stream_track():#弹出一个子窗口，用来显示追踪的数据包
+def track_packet_manage(packet_id,packet_time,packet):
+    timeArray = time.localtime(packet_time)
+    Time = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
+    length = len(packet)  # 记录数据包长度
+    info = packet.summary()  # 记录数据包info信息
+    src=packet[IP].src#将源地址和目的地址更新为IP地址
+    dst=packet[IP].dst
+    if packet[IP].proto == 6:#TCP
+        flag = ''
+        if 'U' in packet[TCP].flags:
+            flag = flag + 'URG'
+        if 'A' in packet[TCP].flags:
+            if flag != '':
+                flag = flag + ','
+            flag = flag + 'ACK'
+        if 'P' in packet[TCP].flags:
+            if flag != '':
+                flag = flag + ','
+            flag = flag + 'PSH'
+        if 'R' in packet[TCP].flags:
+            if flag != '':
+                flag = flag + ','
+            flag = flag + 'RST'
+        if 'S' in packet[TCP].flags:
+            if flag != '':
+                flag = flag + ','
+            flag = flag + 'SYN'
+        if 'F' in packet[TCP].flags:
+            if flag != '':
+                flag = flag + ','
+            flag = flag + 'FIN'
+        info = str(packet[TCP].sport) + '  -->  ' + str(packet[TCP].dport)  + ' [' +flag +'] ' + \
+                ' Seq=' + str(packet[TCP].seq) + ' Ack=' + str(packet[TCP].ack) + ' Win=' + str(packet[TCP].window)
+        packet_list_treeview.insert("", 'end', id, text=id, values=(packet_id, Time, src, dst, "TCP", length, info))
+    else:#UDP
+        info = str(packet[UDP].sport) + '  -->  ' + str(packet[UDP].dport) + ' LEN=' + str(packet[UDP].len)
+        packet_list_treeview.insert("", 'end', id, text=id, values=(packet_id, Time, src, dst, "UDP", length, info))
+    #将该数据包提取到的数据插入到数据包列表区
+    packet_list_treeview.update_idletasks()
+
+def stream_track():#用来显示追踪的数据包
     global flag_track
     if flag_track == False:#开始追踪
-        track_button.configure(text = '停止流追踪')
-
-
         flag_track = True
+        track_button.configure(text = '停止流追踪')
+        '''
+        1.筛选packet，把符合条件的调用track_packet_manage
+        2.清空UI列表
+        3.根据track_packet,把新数据打到列表栏中
+        4.结束后复原
+        '''
+        '''
+        1.清空UI列表(start方法)
+        '''
+        items = packet_list_treeview.get_children()
+        for item in items:#清空数据包列表
+            packet_list_treeview.delete(item)
+        packet_list_treeview.clipboard_clear()#清除剪切板
+        #packet_dissect_tree.delete(*packet_dissect_tree.get_children())
+        hexdump_scrolledtext['state'] = 'normal'
+        hexdump_scrolledtext.delete(1.0, END)
+        hexdump_scrolledtext['state'] = 'disabled'
+        '''
+        2.筛选packet，把符合条件的调用函数输出
+        '''
+        i = 0#当前遍历的packet编号
+        for packet in packet_list:
+            if packet[Ether].type==0x0800:#ip
+                if packet[IP].proto == 6:#TCP
+                    if packet[IP].src == ip1 and packet[IP].dst == ip2 and packet[TCP].sport == port1 and packet[TCP].dport == port2:
+                        track_packet_manage(i+1,packet_time_list[i],packet)
+                    elif packet[IP].src == ip2 and packet[IP].dst == ip1 and packet[TCP].sport == port2 and packet[TCP].dport == port1:
+                        track_packet_manage(i+1,packet_time_list[i],packet)
+                elif packet[IP].proto == 17:#UDP
+                    if packet[IP].src == ip1 and packet[IP].dst == ip2 and packet[UDP].sport == port1 and packet[UDP].dport == port2:
+                        track_packet_manage(i+1,packet_time_list[i],packet)
+                    elif packet[IP].src == ip2 and packet[IP].dst == ip1 and packet[UDP].sport == port2 and packet[UDP].dport == port1:
+                        track_packet_manage(i+1,packet_time_list[i],packet)
+            i += 1
+        
+
         
     else:#取消追踪
         track_button['text'] = '开始流追踪'
-
         flag_track = False
-        
+        #1.清空UI
+        items = packet_list_treeview.get_children()
+        for item in items:#清空数据包列表
+            packet_list_treeview.delete(item)
+        packet_list_treeview.clipboard_clear()#清除剪切板
+        #packet_dissect_tree.delete(*packet_dissect_tree.get_children())
+        hexdump_scrolledtext['state'] = 'normal'
+        hexdump_scrolledtext.delete(1.0, END)
+        hexdump_scrolledtext['state'] = 'disabled'
+        #2.恢复
+        j = 1
+        for packet in packet_list:
+            timeArray = time.localtime(packet_time_list[j-1])
+            Time = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
+            length = len(packet)  # 记录数据包长度
+            info = packet.summary()  # 记录数据包info信息
+            types = {0x0800:'IPv4',0x0806:'ARP',0x86dd:"IPv6",0x880b:"PPP",0x814c:'SNMP'}
+            type = packet[Ether].type#记录以太网的类型
+            src = packet[Ether].src#记录MAC地址
+            dst = packet[Ether].dst
+            if type in types:
+                proto_ether = types[type]
+            else:
+                proto_ether = "Other"  #如果该数据包含有上述字典中没有的协议，则设置为other
+                protocol = proto_ether
+            if proto_ether == 'IPv4':#如果数据包是IPv4类型，就继续判断更细化的协议
+                prots = {1:'ICMP',2:'IGMP',4:'IP',6:'TCP',8:'EGP',9:'IGP',17:'UDP',41:'IPv6',50:'ESP',89:'OSPF'}
+                #字典记录IPv4报文携带的是哪一种协议
+                src=packet[IP].src#将源地址和目的地址更新为IP地址
+                dst=packet[IP].dst
+                if packet[IP].proto in prots:#分析是ipv4下的哪一种协议
+                    proto_ip = prots[packet[IP].proto]
+                else:
+                    proto_ip = 'other'
+                if proto_ip == 'ICMP':#如果是icmp
+                    #print("是icmp报文")
+                    types_icmp = {0: 'echo reply' , 3:'Destination unreachable',5: 'router redirect', 8: 'echo request',
+                                11: 'time-to-live exceeded',13: 'timestamp request',14: 'timestamp reply' }
+                    if packet[ICMP].type in types_icmp:
+                        type_icmp = types_icmp[packet[ICMP].type]#现在知道了是哪一种icmp报文
+                        print(type_icmp)
+                        if type_icmp == 'echo reply':
+                            info = 'echo reply    ' + 'id=' + str(packet[ICMP].id) + ',seq=' + str(packet[ICMP].seq) + ', ttl=' + str(packet[IP].ttl)
+                        elif type_icmp == 'Destination unreachable':
+                            info = "Destination unreachable"
+                        elif type_icmp == 'echo request':
+                            info = 'echo request  ' + 'id=' + str(packet[ICMP].id) + ',seq=' + str(packet[ICMP].seq) + ', ttl=' + str(packet[IP].ttl)
+                        elif type_icmp == 'time-to-live exceeded':
+                            info = "time-to-live exceeded"
+                        else:
+                            info = type_icmp
+                        packet_list_treeview.insert("", 'end', id, text=id,values=(j, Time, src, dst, "ICMP", length, info))
+                    else:
+                        packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, proto_ip, length, info))
+                    #if proto_ip == 'TCP':  # 如果是tcp
+                elif proto_ip == 'TCP':
+                    flag = ''
+                    print(packet[TCP].dport)
+                    if 'U' in packet[TCP].flags:
+                        flag = flag + 'URG'
+                    if 'A' in packet[TCP].flags:
+                        if flag != '':
+                            flag = flag + ','
+                        flag = flag + 'ACK'
+                    if 'P' in packet[TCP].flags:
+                        if flag != '':
+                            flag = flag + ','
+                        flag = flag + 'PSH'
+                    if 'R' in packet[TCP].flags:
+                        if flag != '':
+                            flag = flag + ','
+                        flag = flag + 'RST'
+                    if 'S' in packet[TCP].flags:
+                        if flag != '':
+                            flag = flag + ','
+                        flag = flag + 'SYN'
+                    if 'F' in packet[TCP].flags:
+                        if flag != '':
+                            flag = flag + ','
+                        flag = flag + 'FIN'
+                    info = str(packet[TCP].sport) + '  -->  ' + str(packet[TCP].dport)  + ' [' +flag +'] ' + \
+                        ' Seq=' + str(packet[TCP].seq) + ' Ack=' + str(packet[TCP].ack) + ' Win=' + str(packet[TCP].window)
+                    #print(info)
+                    packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, "TCP", length, info))
+                elif proto_ip == 'UDP':
+                    info = str(packet[UDP].sport) + '  -->  ' + str(packet[UDP].dport) + ' LEN=' + str(packet[UDP].len)
+                    packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, "UDP", length, info))
+                else:
+                    packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, proto_ip, length, info))
+            elif proto_ether == 'ARP':
+                if packet[ARP].op == 1:
+                    dst = "Broadcast"
+                    info = "Who has " + packet[ARP].pdst + "?\tTell " + packet[ARP].psrc
+                elif packet[ARP].op == 2:
+                    info = packet[ARP].psrc + " is at " + packet[Ether].dst
+                packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, "ARP", length, info))
+            else:
+                packet_list_treeview.insert("", 'end', id, text=id, values=(j, Time, src, dst, proto_ether, length, info))
+            #将该数据包提取到的数据插入到数据包列表区
+            packet_list_treeview.update_idletasks()
+            j+=1
 
 def click_packet_list_treeview(event):#当点击数据包列表中的任意一行时，展开该数据包的详细信息
     # event.widget获取Treeview对象，调用selection获取选择对象名称,返回结果为字符型元组
@@ -57,6 +235,7 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
     packet_dissect_tree.column('Dissect', width=packet_list_frame.winfo_width())
     # 转换为整型
     packet_id = int(selected_item[0])-1
+    print('编号',packet_id+1)
     # 取出要分析的数据包
     packet = packet_list[packet_id]
     lines = (packet.show(dump=True)).split('\n')  # dump=True返回字符串，不打出，\n换行符
@@ -84,6 +263,15 @@ def click_packet_list_treeview(event):#当点击数据包列表中的任意一�
     if packet[Ether].type==0x0800:
         if packet[IP].proto == 6 or packet[IP].proto == 17:
             track_button['state'] = NORMAL
+            global ip1,ip2,port1,port2
+            ip1 = packet[IP].dst
+            ip2 = packet[IP].src
+            if packet[IP].proto == 6:
+                port1 = packet[TCP].dport
+                port2 = packet[TCP].sport
+            else:
+                port1 = packet[UDP].dport
+                port2 = packet[UDP].sport
         else:
             track_button['state'] = DISABLED
     else:
@@ -103,6 +291,7 @@ def packet_manage(packet):#处理抓取到的数据包
     global packet_list,id
     packet_list.append(packet)#先将数据包存储到列表中
     packet_time = packet.time#记录数据包抓取的时间
+    packet_time_list.append(packet_time)
     timeArray = time.localtime(packet_time)
     Time = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
     length = len(packet)  # 记录数据包长度
@@ -171,9 +360,6 @@ def packet_manage(packet):#处理抓取到的数据包
                 if flag != '':
                     flag = flag + ','
                 flag = flag + 'FIN'
-
-            #print(packet[TCP].flags)
-            #print(flag)
             info = str(packet[TCP].sport) + '  -->  ' + str(packet[TCP].dport)  + ' [' +flag +'] ' + \
                    ' Seq=' + str(packet[TCP].seq) + ' Ack=' + str(packet[TCP].ack) + ' Win=' + str(packet[TCP].window)
             #print(info)
@@ -196,7 +382,6 @@ def packet_manage(packet):#处理抓取到的数据包
     packet_list_treeview.update_idletasks()
     id = id +1
 
-
 def save():
     global flag_save
     flag_save = True
@@ -207,7 +392,7 @@ def save():
     wrpcap(filename, packet_list)
 
 def start():#响应开始按钮
-    global flag_stop,flag_save,id #停止和保存的标志，true表示已经发生，false表示尚未发生
+    global flag_stop,flag_save,id,packet_list #停止和保存的标志，true表示已经发生，false表示尚未发生
     if flag_stop == True and flag_save == False:#如果抓包停止了但还没有保存，要提醒用户保存
         save_or_not = tkinter.messagebox.askyesnocancel("Unsaved Packets...","您是否要保存已捕获的分组？若不保存，您已捕获的分组将会丢失")
         if save_or_not == True:#如果选择保存分组
@@ -230,13 +415,16 @@ def start():#响应开始按钮
     for item in items:#清空数据包列表
         packet_list_treeview.delete(item)
     packet_list_treeview.clipboard_clear()#清除剪切板
+    hexdump_scrolledtext['state'] = 'normal'
+    hexdump_scrolledtext.delete(1.0, END)
+    hexdump_scrolledtext['state'] = 'disabled'
+    packet_list = []
     id = 1#id重置为1
 
     t = threading.Thread(target=packet_capture)#多线程调用抓包函数
     t.setDaemon(True)#设置为该线程为守护线程
     t.start()
     flag_save = False
-
 
 def stop():
     global flag_stop
@@ -247,7 +435,6 @@ def stop():
     save_button['state'] = NORMAL
     stop_button['state'] = DISABLED
     flag_stop = True
-
 
 def quit():
     #终止线程，停止抓包
@@ -270,7 +457,6 @@ def quit():
             tk.destroy()
     else:
         tk.destroy()
-
 # ---------------------以下代码负责绘制GUI界面---------------------
 
 def choose_nic(events):
@@ -367,12 +553,6 @@ packet_dissect_frame = Frame()
 packet_dissect_sub_frame = Frame(packet_dissect_frame)
 packet_dissect_tree = Treeview(packet_dissect_sub_frame, selectmode='browse')
 
-# packet_list_column_width = [500]
-# packet_list_treeview['show'] = 'headings'
-# # 设置数据包列表区的列
-# for column_name, column_width in zip(packet_list_treeview["columns"], packet_list_column_width):
-#     packet_list_treeview.column(column_name, width=column_width)
-#     packet_list_treeview.heading(column_name, text=column_name)
 
 packet_dissect_tree["columns"] = ("Dissect",)
 #packet_dissect_tree.column('Dissect',width=500)
