@@ -181,7 +181,7 @@ def packet_manage(packet):#处理抓取到的数据包
 def save():
     global flag_save
     flag_save = True
-    filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='.pcap')
+    filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[('pcap','.pcap'),('pcapng','.pcapng')],initialfile='.pcap')
     if filename.find('.pcap') == -1:
         # 默认文件格式为 pcap
         filename = filename+'.pcap'
@@ -193,7 +193,7 @@ def start():#响应开始按钮
         save_or_not = tkinter.messagebox.askyesnocancel("Unsaved Packets...","您是否要保存已捕获的分组？若不保存，您已捕获的分组将会丢失")
         if save_or_not == True:#如果选择保存分组
             #提供pcapng格式的文件保存方式
-            filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='.pcap')
+            filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[('pcap','.pcap'),('pcapng','.pcapng')],initialfile='.pcap')
             if filename.find('.pcap') == -1:
                 # 默认文件格式为 pcap
                 filename = filename + '.pcap'
@@ -243,7 +243,7 @@ def quit():
             if save_or_not is False:
                 main_window.destroy()
             elif save_or_not is True:
-                filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[(('pcap','.pcap'),'pcapng','.pcapng')],initialfile='*.pcap')
+                filename = tkinter.filedialog.asksaveasfilename(title='保存捕获文件为',filetype=[('pcap','.pcap'),('pcapng','.pcapng')],initialfile='*.pcap')
                 if filename.find('.pcap') == -1:
                     # 默认文件格式为 pcap
                     filename = filename + '.pcap'
@@ -260,8 +260,6 @@ def choose_nic(events):
     NIC = variable.get()
     print(NIC)
 main_window = tkinter.Tk() # 创建根窗口
-# w, h = tk.maxsize()
-# tk.geometry("{}x{}".format(w,h))
 main_window.title("sniffer")
 # 带水平分割条的主窗体
 # PanedWindow是一个窗口布局管理的插件，可以包含一个或者多个子控件
